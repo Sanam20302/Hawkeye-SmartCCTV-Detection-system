@@ -21,6 +21,8 @@ backend/faces.db
 # Backend specific uploads/trusted faces
 backend/uploads/
 backend/trusted_faces/
+backend/missing_faces/
+backend/captured_faces/
 
 # Next.js (Frontend)
 .next/
