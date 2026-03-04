@@ -37,14 +37,17 @@ def check_loitering(track_id, center_point, track_history, current_time, thresho
         return True
     return False
 
-def recognize_frame_faces(frame, tracks, mtcnn, resnet, known_faces, device, saved_untrusted=None):
+def recognize_frame_faces(frame, tracks, mtcnn, resnet, known_faces, device, saved_untrusted=None, missing_faces=None):
     """
     frame: cv2 image (BGR)
     tracks: deepsort tracks
     known_faces: list of {name, embedding}
+    missing_faces: list of {name, embedding}
     """
     if saved_untrusted is None:
         saved_untrusted = set()
+    if missing_faces is None:
+        missing_faces = []
 
     if mtcnn is None or resnet is None:
         return [], saved_untrusted
@@ -102,15 +105,28 @@ def recognize_frame_faces(frame, tracks, mtcnn, resnet, known_faces, device, sav
                     # Compare with known faces
                     name = "Unknown"
                     is_trusted = False
+                    is_missing = False
                     min_dist = 0.8 # Threshold
                     
-                    for kf in known_faces:
-                        known_emb = np.array(kf['embedding'])
-                        dist = np.linalg.norm(embedding - known_emb)
+                    # Check missing faces first
+                    for mf in missing_faces:
+                        missing_emb = np.array(mf['embedding'])
+                        dist = np.linalg.norm(embedding - missing_emb)
                         if dist < min_dist:
                             min_dist = dist
-                            name = kf['name']
-                            is_trusted = True
+                            name = mf['name']
+                            is_missing = True
+                            is_missing_category = mf.get('category', 'Missing')
+                    
+                    # If not missing, check trusted faces
+                    if not is_missing:
+                        for kf in known_faces:
+                            known_emb = np.array(kf['embedding'])
+                            dist = np.linalg.norm(embedding - known_emb)
+                            if dist < min_dist:
+                                min_dist = dist
+                                name = kf['name']
+                                is_trusted = True
                     
                     # Store result relative to full frame
                     abs_fx1 = int(x1 + fx1)
@@ -121,11 +137,13 @@ def recognize_frame_faces(frame, tracks, mtcnn, resnet, known_faces, device, sav
                     results.append({
                         "box": (abs_fx1, abs_fy1, abs_fx2, abs_fy2),
                         "name": name,
-                        "trusted": is_trusted
+                        "trusted": is_trusted,
+                        "missing": is_missing,
+                        "category": is_missing_category if is_missing else None
                     })
 
                     # Handle Untrusted Capture
-                    if not is_trusted:
+                    if not is_trusted and not is_missing:
                         if track.track_id not in saved_untrusted:
                             filename = f"capture_{uuid.uuid4().hex}.jpg"
                             fpath = os.path.join("backend/captured_faces", filename)
@@ -141,7 +159,7 @@ def recognize_frame_faces(frame, tracks, mtcnn, resnet, known_faces, device, sav
     return results, saved_untrusted
 
 def process_frame_annotations(frame, tracks, current_time, track_history, loitering_saved, settings, 
-                              mtcnn=None, resnet=None, known_faces=None, device='cpu', saved_untrusted_session=None):
+                              mtcnn=None, resnet=None, known_faces=None, device='cpu', saved_untrusted_session=None, missing_faces=None):
     
     annotated_frame = frame.copy()
     
@@ -171,18 +189,25 @@ def process_frame_annotations(frame, tracks, current_time, track_history, loiter
         'trespassing': False,
         'loitering': False,
         'crowd': False,
-        'untrusted_face': False 
+        'untrusted_face': False,
+        'missing_person': False,
+        'missing_person_name': '',
+        'missing_person_category': ''
     }
 
     # Run Face Recognition if models provided
     face_results = []
     if mtcnn and resnet:
         face_results, saved_untrusted_session = recognize_frame_faces(
-            frame, tracks, mtcnn, resnet, known_faces, device, saved_untrusted_session
+            frame, tracks, mtcnn, resnet, known_faces, device, saved_untrusted_session, missing_faces
         )
-        # Check if any face is untrusted
+        # Check if any face is untrusted or missing
         for res in face_results:
-            if not res['trusted']:
+            if res.get('missing', False):
+                frame_alerts['missing_person'] = True
+                frame_alerts['missing_person_name'] = res['name']
+                frame_alerts['missing_person_category'] = res.get('category', 'Missing')
+            elif not res['trusted']:
                 frame_alerts['untrusted_face'] = True
 
     for track in tracks:
@@ -232,11 +257,26 @@ def process_frame_annotations(frame, tracks, current_time, track_history, loiter
         cv2.putText(annotated_frame, "Trespassing Alert!", (10, y_pos), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, RED_ALERT, 2)
     
+    if frame_alerts['missing_person']:
+        y_pos += 20
+        cat = frame_alerts['missing_person_category'].upper()
+        cv2.putText(annotated_frame, f"{cat} DETECTED: {frame_alerts['missing_person_name']}", (10, y_pos), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, RED_ALERT if cat == 'WANTED' else (0, 165, 255), 2)
+    
     # Draw Faces
     for res in face_results:
         fx1, fy1, fx2, fy2 = res['box']
-        color = GREEN_SAFE if res['trusted'] else RED_ALERT
-        label = res['name']
+        if res.get('missing', False):
+            cat = res.get('category', 'Missing').upper()
+            color = RED_ALERT if cat == 'WANTED' else (0, 165, 255) # Orange for Missing, Red for Wanted
+            label = f"{cat}: {res['name']}"
+        elif res['trusted']:
+            color = GREEN_SAFE
+            label = res['name']
+        else:
+            color = RED_ALERT
+            label = res['name']
+            
         cv2.rectangle(annotated_frame, (fx1, fy1), (fx2, fy2), color, 2)
         cv2.putText(annotated_frame, label, (fx1, fy1-10), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)

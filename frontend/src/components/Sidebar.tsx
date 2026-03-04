@@ -9,6 +9,7 @@ import { useAuth } from "@/context/AuthContext";
 const navItems = [
     { href: "/", icon: LayoutDashboard, label: "Dashboard" },
     { href: "/faces", icon: Users, label: "Trusted Faces" },
+    { href: "/missing", icon: UserX, label: "Missing/Wanted" },
     { href: "/settings", icon: Settings, label: "System Settings" },
 ];
 

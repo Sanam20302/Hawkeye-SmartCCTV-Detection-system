@@ -41,11 +41,14 @@ if not os.path.exists("captured_faces"):
     os.makedirs("captured_faces")
 if not os.path.exists("trusted_faces"):
     os.makedirs("trusted_faces")
+if not os.path.exists("missing_faces"):
+    os.makedirs("missing_faces")
 if not os.path.exists("uploads"):
     os.makedirs("uploads")
 
 app.mount("/captured_faces", StaticFiles(directory="captured_faces"), name="captured_faces")
 app.mount("/trusted_faces", StaticFiles(directory="trusted_faces"), name="trusted_faces")
+app.mount("/missing_faces", StaticFiles(directory="missing_faces"), name="missing_faces")
 
 app.include_router(api.router)
 
@@ -83,12 +86,14 @@ class VideoState:
             
             database.init_db()
             self.known_faces = database.get_trusted_faces()
-            print(f"Loaded {len(self.known_faces)} trusted faces.")
+            self.missing_faces = database.get_missing_faces()
+            print(f"Loaded {len(self.known_faces)} trusted faces and {len(self.missing_faces)} missing faces.")
         except Exception as e:
             print(f"Face Recognition Init Error: {e}")
             self.mtcnn = None
             self.resnet = None
             self.known_faces = []
+            self.missing_faces = []
 
         # State trackers
         self.track_history = defaultdict(list)
@@ -148,6 +153,7 @@ class VideoState:
             if self.mtcnn:
                 from backend import database
                 self.known_faces = database.get_trusted_faces()
+                self.missing_faces = database.get_missing_faces()
             
         return self.cap
 
@@ -207,7 +213,8 @@ class VideoState:
                 resnet=self.resnet,
                 known_faces=self.known_faces,
                 device=self.device,
-                saved_untrusted_session=self.saved_untrusted_session
+                saved_untrusted_session=self.saved_untrusted_session,
+                missing_faces=self.missing_faces
             )
             
             # Process Alerts
@@ -228,6 +235,7 @@ class VideoState:
             time.sleep(0.01)
 
 state = VideoState()
+api.video_state = state
 
 @app.on_event("startup")
 async def startup_event():

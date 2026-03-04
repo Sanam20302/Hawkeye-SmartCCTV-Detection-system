@@ -14,7 +14,8 @@ class AlertManager:
         self.last_alert_time = {
             'trespassing': 0,
             'loitering': 0,
-            'crowd': 0
+            'crowd': 0,
+            'missing_person': 0
         }
         self.cooldown = 15  # Seconds between alerts of the same type
         self.alert_count = 0 
@@ -43,8 +44,17 @@ class AlertManager:
         current_time = time.time()
         
         # Trace active flags
-        if any([alerts.get('trespassing'), alerts.get('loitering'), alerts.get('crowd')]):
-            print(f"[DEBUG] Active Alert Flags: T={alerts.get('trespassing')}, L={alerts.get('loitering')}, C={alerts.get('crowd')}")
+        if any([alerts.get('trespassing'), alerts.get('loitering'), alerts.get('crowd'), alerts.get('missing_person')]):
+            print(f"[DEBUG] Active Alert Flags: T={alerts.get('trespassing')}, L={alerts.get('loitering')}, C={alerts.get('crowd')}, M={alerts.get('missing_person')}")
+
+        # Check Missing Person
+        if alerts.get('missing_person'):
+            if current_time - self.last_alert_time['missing_person'] > self.cooldown:
+                name = alerts.get('missing_person_name', 'Unknown')
+                category = alerts.get('missing_person_category', 'Missing').upper()
+                self.trigger_alert(f"🚨 {category} PERSON DETECTED! Name: {name}", 'missing_person')
+            else:
+                print(f"[DEBUG] Missing person alert suppressed (cooldown)")
 
         # Check Trespassing
         if alerts.get('trespassing'):

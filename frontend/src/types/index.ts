@@ -15,6 +15,14 @@ export interface TrustedFace {
     image_path: string;
 }
 
+export interface MissingFace {
+    id: number;
+    name: string;
+    embedding: number[];
+    image_path: string;
+    category?: string;
+}
+
 export interface UntrustedFace {
     id: number;
     image_path: string;
