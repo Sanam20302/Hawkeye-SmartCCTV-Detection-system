@@ -118,6 +118,6 @@ Hawkeye can be deployed in:
 
 ---
 
-## 👨‍💻 Author
+## Author
 
 Developed by **Sanam20302**
